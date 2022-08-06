@@ -2,6 +2,10 @@ package main
 
 import (
 	"archive/zip"
+	"compress/flate"
+	"compress/gzip"
+	"compress/zlib"
+	"flag"
 	"fmt"
 	"io"
 	"io/fs"
@@ -11,11 +15,17 @@ import (
 func main() {
 	// Read the first argument as a file name or folder name
 	// and create a zip file with the same name
-	if len(os.Args) != 2 {
-		fmt.Println("Usage: vzip <file_name>")
+	if len(os.Args) < 2 {
+		fmt.Println("Usage: vzip <folder_name | file_name> [--level=int] [--method=none,gzip,zlib]\n  --level: Whether to compress the file or not. Between -1 and 9. The higher the number, better the compression.\n(default) 0 disables compression.\n\n  --method: The method to use for compression.\nAccepted values: (default) none, gzip, zlib")
 		return
 	}
 	name := os.Args[1]
+
+	if !fileExists(name) {
+		fmt.Println("File or folder with name " + name + " does not exist.")
+		os.Exit(1)
+		return
+	}
 
 	// Create a zip file with the same name
 	// and write the contents of the folder to it
@@ -25,6 +35,7 @@ func main() {
 	}
 
 	zipWriter := zip.NewWriter(finalArchive)
+	addCompressorToWriter(zipWriter)
 
 	defer finalArchive.Close()
 	defer zipWriter.Close()
@@ -40,13 +51,49 @@ func main() {
 	doFileLoop(name, files, zipWriter)
 }
 
+func addCompressorToWriter(dst *zip.Writer) {
+	// os.Args[1] is the file name
+	options := flag.NewFlagSet(os.Args[1], flag.ExitOnError)
+
+	compressionLevel := options.Int("level", 0, "Whether to compress the file or not. Between -1 and 9. The higher the number, better the compression.\n(default) 0 disables compression.")
+	compressMethod := options.String("method", "none", "The method to use for compression.\nAccepted values: (default) none, gzip, zlib")
+	options.Parse(os.Args[2:])
+
+	if *compressionLevel < -1 || *compressionLevel > 9 {
+		fmt.Println("Compression level must be between -1 and 9.")
+		os.Exit(1)
+		return
+	}
+
+	switch *compressMethod {
+	case "gzip":
+		dst.RegisterCompressor(zip.Deflate, func(out io.Writer) (io.WriteCloser, error) {
+			return gzip.NewWriterLevel(out, *compressionLevel)
+		})
+	case "zlib":
+		dst.RegisterCompressor(zip.Deflate, func(out io.Writer) (io.WriteCloser, error) {
+			return zlib.NewWriterLevel(out, *compressionLevel)
+		})
+	case "none":
+		dst.RegisterCompressor(zip.Store, func(out io.Writer) (io.WriteCloser, error) {
+			return flate.NewWriter(out, flate.NoCompression)
+		})
+		dst.RegisterCompressor(zip.Deflate, func(out io.Writer) (io.WriteCloser, error) {
+			return flate.NewWriter(out, flate.NoCompression)
+		})
+	default:
+		fmt.Println("Invalid compression method.")
+		os.Exit(1)
+	}
+}
+
 func addSingleFileToZip(dir string, zipWriter *zip.Writer) {
 	fileWriter, err := os.Open(dir)
 	if err != nil {
 		panic(err)
 	}
-
 	defer fileWriter.Close()
+
 	createStream, err := zipWriter.Create(dir)
 	if err != nil {
 		panic(err)
@@ -69,7 +116,7 @@ func loopInsideFolder(dir string, zipWriter *zip.Writer) {
 		if err != nil {
 			panic(err)
 		}
-	
+
 		// Copy file content to the zip file
 		copyToFinalZip(createStream, fileWriter)
 	} else {
@@ -104,6 +151,11 @@ func readDir(name string) []fs.DirEntry {
 		return []fs.DirEntry{}
 	}
 	return files
+}
+
+func fileExists(dir string) bool {
+	_, err := os.Stat(dir)
+	return err == nil
 }
 
 func isFile(dir string) bool {
