@@ -65,12 +65,15 @@ func main() {
 	// If the chosen argument is a file
 	if isFile(name) {
 		addSingleFileToZip(name, zipWriter)
+		os.Exit(0)
 		return
 	}
 
 	// If the chosen argument is a folder
 	files := readDir(name)
-	doFileLoop(name, files, zipWriter)
+	endedChannel := make(chan bool)
+	go doFileLoop(name, files, zipWriter, endedChannel)
+	<-endedChannel
 }
 
 func addCompressorToWriter(dst *zip.Writer) {
@@ -115,7 +118,9 @@ func addSingleFileToZip(dir string, zipWriter *zip.Writer) {
 	}
 
 	// Copy file content to the zip file
-	copyToFinalZip(createStream, fileWriter)
+	endedChannel := make(chan bool)
+	go copyToFinalZip(createStream, fileWriter, endedChannel)
+	<-endedChannel
 }
 
 func loopInsideFolder(dir string, zipWriter *zip.Writer) {
@@ -123,9 +128,9 @@ func loopInsideFolder(dir string, zipWriter *zip.Writer) {
 	if err != nil {
 		panic(err)
 	}
-
 	defer fileWriter.Close()
 
+	endedChannel := make(chan bool)
 	if isFile(dir) {
 		createStream, err := zipWriter.Create(dir)
 		if err != nil {
@@ -133,31 +138,33 @@ func loopInsideFolder(dir string, zipWriter *zip.Writer) {
 		}
 
 		// Copy file content to the zip file
-		copyToFinalZip(createStream, fileWriter)
+		go copyToFinalZip(createStream, fileWriter, endedChannel)
 	} else {
 		files := readDir(dir)
 		if len(files) != 0 {
-			doFileLoop(dir, files, zipWriter)
+			go doFileLoop(dir, files, zipWriter, endedChannel)
 		}
 	}
+	<-endedChannel
 }
 
-func doFileLoop(dir string, files []fs.DirEntry, zipWriter *zip.Writer) {
+func doFileLoop(dir string, files []fs.DirEntry, zipWriter *zip.Writer, endedChannel chan bool) {
 	for _, file := range files {
 		if !file.IsDir() {
 			addSingleFileToZip(dir+"/"+file.Name(), zipWriter)
-			return
+		} else {
+			loopInsideFolder(dir+"/"+file.Name(), zipWriter)
 		}
-
-		loopInsideFolder(dir+"/"+file.Name(), zipWriter)
 	}
+	endedChannel <- true
 }
 
-func copyToFinalZip(dest io.Writer, src *os.File) {
+func copyToFinalZip(dest io.Writer, src *os.File, endedChannel chan bool) {
 	_, err := io.Copy(dest, src)
 	if err != nil {
 		panic(err)
 	}
+	endedChannel <- true
 }
 
 func readDir(name string) []fs.DirEntry {
