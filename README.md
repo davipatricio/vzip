@@ -19,3 +19,22 @@ Accepted values:
   - `none`
   - `gzip`
   - `zlib`
+
+## 💻 Building from source
+Clone the repository:
+
+```sh-session
+$ git clone https://github.com/davipatricio/vzip.git
+```
+
+Build the project:
+
+```sh-session
+$ cd vzip
+$ go build vzip.go
+```
+
+If you wish a smaller binary size, compile the program using `go build -ldflags="-w -s" -gcflags=all="-l -B" vzip.go`.
+
+## 📝 License
+This project is licensed under the [MIT](LICENSE) license.
