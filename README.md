@@ -7,7 +7,7 @@ $ vzip <file name | folder name> [--dest=string] [--level=int] [--method=string]
 ```
 
 ## ❓ Options
-`--dest=int`: Where the compressed file will be saved. Defaults to `./<file name>.zip`
+`--dest=string`: Where the compressed file will be saved. Defaults to `./<file name>.zip`
 
 `--level=int`: What compression level should be used (0-9). The higher the number, the slower the operation, but the smaller the file.
 
