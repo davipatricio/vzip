@@ -10,15 +10,22 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"strings"
 )
+
+var options *flag.FlagSet
+var compressionLevel *int
+var compressMethod *string
+var dest *string
 
 func main() {
 	// Read the first argument as a file name or folder name
 	// and create a zip file with the same name
 	if len(os.Args) < 2 {
-		fmt.Println("Usage: vzip <folder_name | file_name> [--level=int] [--method=none,gzip,zlib]\n  --level: Whether to compress the file or not. Between -1 and 9. The higher the number, better the compression.\n(default) 0 disables compression.\n\n  --method: The method to use for compression.\nAccepted values: (default) none, gzip, zlib")
+		fmt.Println("Usage: vzip <folder_name | file_name> [--dest] [--level=int] [--method=none,gzip,zlib]\n  --dest: Where to store the zip file.\nDefaults to ./<filename>.zip\n  --level: Whether to compress the file or not. Between -1 and 9. The higher the number, better the compression.\nDefaults to 0 (disables compression).\n  --method: The method to use for compression.\nAccepted values: (default) none, gzip, zlib")
 		return
 	}
+
 	name := os.Args[1]
 
 	if !fileExists(name) {
@@ -27,9 +34,24 @@ func main() {
 		return
 	}
 
+	options = flag.NewFlagSet(os.Args[1], flag.ExitOnError)
+	compressionLevel = options.Int("level", 0, "Whether to compress the file or not. Between -1 and 9. The higher the number, better the compression.\n(default) 0 disables compression.")
+	compressMethod = options.String("method", "none", "The method to use for compression.\nAccepted values: (default) none, gzip, zlib")
+	dest = options.String("dest", "", "Where to store the zip file.\n(default) ./<filename>.zip")
+
+	options.Parse(os.Args[2:])
+
+	if *dest == "" {
+		*dest = "./" + name + ".zip"
+	}
+
+	if !strings.HasSuffix(*dest, ".zip") {
+		*dest += ".zip"
+	}
+
 	// Create a zip file with the same name
 	// and write the contents of the folder to it
-	finalArchive, err := os.Create(name + ".zip")
+	finalArchive, err := os.Create(*dest)
 	if err != nil {
 		panic(err)
 	}
@@ -52,13 +74,6 @@ func main() {
 }
 
 func addCompressorToWriter(dst *zip.Writer) {
-	// os.Args[1] is the file name
-	options := flag.NewFlagSet(os.Args[1], flag.ExitOnError)
-
-	compressionLevel := options.Int("level", 0, "Whether to compress the file or not. Between -1 and 9. The higher the number, better the compression.\n(default) 0 disables compression.")
-	compressMethod := options.String("method", "none", "The method to use for compression.\nAccepted values: (default) none, gzip, zlib")
-	options.Parse(os.Args[2:])
-
 	if *compressionLevel < -1 || *compressionLevel > 9 {
 		fmt.Println("Compression level must be between -1 and 9.")
 		os.Exit(1)
